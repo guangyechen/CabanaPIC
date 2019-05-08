@@ -4,15 +4,15 @@
 
 class Initializer {
     public:
-  static void initialize_params(size_t _nc = 16, size_t _nppc = 16)
+  static void initialize_params(size_t _nx = 16, size_t _ny = 1, size_t _nz = 1, size_t _nppc = 16)
         {
 
             //logger << "Importing Default Input Deck" << std::endl;
             const real_t default_grid_len = 1.0;
 	    //1D
-            Parameters::instance().NX_global = _nc;
-            Parameters::instance().NY_global = 1; //_nc;
-            Parameters::instance().NZ_global = 1; //_nc;
+            Parameters::instance().NX_global = _nx;
+            Parameters::instance().NY_global = _ny;
+            Parameters::instance().NZ_global = _nz;
 
             Parameters::instance().nx = Parameters::instance().NX_global;
             Parameters::instance().ny = Parameters::instance().NY_global;

@@ -44,7 +44,7 @@ int main( int argc, char* argv[] )
 
         // num_cells (without ghosts), num_particles_per_cell
         size_t npc = 4000;
-        Initializer::initialize_params(64, npc);
+        Initializer::initialize_params(64, 1, 1, npc);
 
         // Cache some values locally for printing
         const size_t nx = Parameters::instance().nx;
