@@ -5,12 +5,12 @@
 
 // Inner array size (the size of the arrays in the structs-of-arrays).
 #ifndef VLEN
-#define VLEN 32
+#define VLEN 8
 #endif
 const std::size_t array_size = VLEN;
 
 #ifndef CELL_BLOCK_FACTOR
-#define CELL_BLOCK_FACTOR 32
+#define CELL_BLOCK_FACTOR 8
 #endif
 // Cell blocking factor in memory
 const size_t cell_blocking = CELL_BLOCK_FACTOR;

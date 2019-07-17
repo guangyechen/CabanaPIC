@@ -4,6 +4,145 @@
 #include <types.h>
 #include "move_p.h"
 
+void push_parallel_for( particle_list_t particles){
+    auto position_x = particles.slice<PositionX>();
+    auto position_y = particles.slice<PositionY>();
+    auto position_z = particles.slice<PositionZ>();
+
+    auto velocity_x = particles.slice<VelocityX>();
+    auto velocity_y = particles.slice<VelocityY>();
+    auto velocity_z = particles.slice<VelocityZ>();
+
+    auto weight = particles.slice<Weight>();
+    auto cell = particles.slice<Cell_Index>();
+    
+    auto _push =
+        KOKKOS_LAMBDA( const int s )
+        {
+	  asm volatile ("# loop kokkos_parallel_for begin");	  
+	  for(int i=0; i<VLEN; ++i){
+	    real_t dx = position_x.access(s,i);   // Load position
+	    real_t dy = position_y.access(s,i);   // Load position
+	    real_t dz = position_z.access(s,i);   // Load position
+	
+	    real_t ux = velocity_x.access(s,i);   // Load velocity
+	    real_t uy = velocity_y.access(s,i);   // Load velocity
+	    real_t uz = velocity_z.access(s,i);   // Load velocity
+	
+	    velocity_x.access(s,i) = ux+ static_cast<float>(1e-7);
+	    velocity_y.access(s,i) = uy+ static_cast<float>(1e-7);
+	    velocity_z.access(s,i) = uz+ static_cast<float>(1e-7);
+	    
+	    position_x.access(s,i) = dx+ static_cast<float>(1e-7); //v3;
+	    position_y.access(s,i) = dy+ static_cast<float>(1e-7); //v4;
+	    position_z.access(s,i) = dz+ static_cast<float>(1e-7); //v5;
+	    
+	    real_t wt = weight.access(s,i);
+	    int    ci = cell.access(s,i);
+	    weight.access(s,i) = wt + static_cast<float>(1e-7);
+	    cell.access(s,i)   = ci++;
+	  }
+	  asm volatile ("# loop kokkos_parallel_for end");	  	  
+	};
+
+        Kokkos::parallel_for( particles.size()/VLEN, _push );
+
+}
+
+void push_simd_parallel_for( particle_list_t particles){
+    auto position_x = particles.slice<PositionX>();
+    auto position_y = particles.slice<PositionY>();
+    auto position_z = particles.slice<PositionZ>();
+
+    auto velocity_x = particles.slice<VelocityX>();
+    auto velocity_y = particles.slice<VelocityY>();
+    auto velocity_z = particles.slice<VelocityZ>();
+
+    auto weight = particles.slice<Weight>();
+    auto cell = particles.slice<Cell_Index>();
+    
+    auto _push =
+        KOKKOS_LAMBDA( const int s, const int i )
+        {
+	  asm volatile ("# loop simd_parallel_for begin");
+	  
+	real_t dx = position_x.access(s,i);   // Load position
+	real_t dy = position_y.access(s,i);   // Load position
+	real_t dz = position_z.access(s,i);   // Load position
+	
+	real_t ux = velocity_x.access(s,i);   // Load velocity
+	real_t uy = velocity_y.access(s,i);   // Load velocity
+	real_t uz = velocity_z.access(s,i);   // Load velocity
+	
+	velocity_x.access(s,i) = ux+ static_cast<float>(1e-7);
+	velocity_y.access(s,i) = uy+ static_cast<float>(1e-7);
+	velocity_z.access(s,i) = uz+ static_cast<float>(1e-7);
+	
+	position_x.access(s,i) = dx+ static_cast<float>(1e-7); //v3;
+	position_y.access(s,i) = dy+ static_cast<float>(1e-7); //v4;
+	position_z.access(s,i) = dz+ static_cast<float>(1e-7); //v5;
+	
+	real_t wt = weight.access(s,i);
+	int    ci = cell.access(s,i);
+	weight.access(s,i) = wt + static_cast<float>(1e-7);
+	cell.access(s,i)   = ci++;
+	  asm volatile ("# loop simd_parallel_for end");
+	  
+	};
+
+        Cabana::SimdPolicy<particle_list_t::vector_length,ExecutionSpace>
+            vec_policy( 0, particles.size() );
+        Cabana::simd_parallel_for( vec_policy, _push, "push()" );
+
+}
+ 
+void push( particle_list_t particles){
+    auto position_x = particles.slice<PositionX>();
+    auto position_y = particles.slice<PositionY>();
+    auto position_z = particles.slice<PositionZ>();
+
+    auto velocity_x = particles.slice<VelocityX>();
+    auto velocity_y = particles.slice<VelocityY>();
+    auto velocity_z = particles.slice<VelocityZ>();
+
+    auto weight = particles.slice<Weight>();
+    auto cell = particles.slice<Cell_Index>();
+
+    asm volatile ("# loop omp begin");
+
+#pragma omp parallel for
+    for(int s=0; s<particles.size()/VLEN; ++s){
+#pragma omp simd
+      for(int i = 0; i<VLEN; ++i){
+	real_t dx = position_x.access(s,i);   // Load position
+	real_t dy = position_y.access(s,i);   // Load position
+	real_t dz = position_z.access(s,i);   // Load position
+	
+	real_t ux = velocity_x.access(s,i);   // Load velocity
+	real_t uy = velocity_y.access(s,i);   // Load velocity
+	real_t uz = velocity_z.access(s,i);   // Load velocity
+	
+	velocity_x.access(s,i) = ux*1.1f+ static_cast<float>(1e-7);
+	velocity_y.access(s,i) = uy*1.1f+ static_cast<float>(1e-7);
+	velocity_z.access(s,i) = uz*1.1f+ static_cast<float>(1e-7);
+	
+	position_x.access(s,i) = dx*1.1f+ static_cast<float>(1e-7); //v3;
+	position_y.access(s,i) = dy*1.1f+ static_cast<float>(1e-7); //v4;
+	position_z.access(s,i) = dz*1.1f+ static_cast<float>(1e-7); //v5;
+	
+	real_t wt = weight.access(s,i);
+	int    ci = cell.access(s,i);
+	weight.access(s,i) = wt*1.1f + static_cast<float>(1e-7);
+	cell.access(s,i)   = ci++;
+      }
+    }
+    asm volatile ("# loop omp end");
+
+}
+
+
+
+
 void push(
         particle_list_t particles,
         interpolator_array_t& f0,
@@ -70,26 +209,26 @@ void push(
             //{
             // Setup data accessors
             // This may be cleaner if we hoisted it?
-            int ii = cell.access(s,i);
+            // int ii = cell.access(s,i);
 
-            auto ex = _ex(ii);
-            auto dexdy = _dexdy(ii);
-            auto dexdz = _dexdz(ii);
-            auto d2exdydz = _d2exdydz(ii);
-            auto ey = _ey(ii);
-            auto deydz = _deydz(ii);
-            auto deydx = _deydx(ii);
-            auto d2eydzdx = _d2eydzdx(ii);
-            auto ez = _ez(ii);
-            auto dezdx = _dezdx(ii);
-            auto dezdy = _dezdy(ii);
-            auto d2ezdxdy = _d2ezdxdy(ii);
-            auto cbx = _cbx(ii);
-            auto dcbxdx = _dcbxdx(ii);
-            auto cby = _cby(ii);
-            auto dcbydy = _dcbydy(ii);
-            auto cbz = _cbz(ii);
-            auto dcbzdz = _dcbzdz(ii);
+            // auto ex = _ex(ii);
+            // auto dexdy = _dexdy(ii);
+            // auto dexdz = _dexdz(ii);
+            // auto d2exdydz = _d2exdydz(ii);
+            // auto ey = _ey(ii);
+            // auto deydz = _deydz(ii);
+            // auto deydx = _deydx(ii);
+            // auto d2eydzdx = _d2eydzdx(ii);
+            // auto ez = _ez(ii);
+            // auto dezdx = _dezdx(ii);
+            // auto dezdy = _dezdy(ii);
+            // auto d2ezdxdy = _d2ezdxdy(ii);
+            // auto cbx = _cbx(ii);
+            // auto dcbxdx = _dcbxdx(ii);
+            // auto cby = _cby(ii);
+            // auto dcbydy = _dcbydy(ii);
+            // auto cbz = _cbz(ii);
+            // auto dcbzdz = _dcbzdz(ii);
             /*
                auto ex  = f0.get<EX>(ii);
                auto dexdy  = f0.get<DEXDY>(ii);
@@ -114,7 +253,7 @@ void push(
             // Perform push
 
             // TODO: deal with pm's
-            particle_mover_t local_pm = particle_mover_t();
+            // particle_mover_t local_pm = particle_mover_t();
 
             real_t dx = position_x.access(s,i);   // Load position
             real_t dy = position_y.access(s,i);   // Load position
@@ -127,64 +266,64 @@ void push(
             // real_t haz  = qdt_2mc*(    ( ez    + dx*dezdx    ) +
             //         dy*( dezdy + dx*d2ezdxdy ) );
 
-            //1D only
-            real_t hax = qdt_2mc*ex;
-            real_t hay = 0;
-            real_t haz = 0;
+            // //1D only
+            // real_t hax = qdt_2mc*ex;
+            // real_t hay = 0;
+            // real_t haz = 0;
 
-            cbx  = cbx + dx*dcbxdx;             // Interpolate B
-            cby  = cby + dy*dcbydy;
-            cbz  = cbz + dz*dcbzdz;
+            // cbx  = cbx + dx*dcbxdx;             // Interpolate B
+            // cby  = cby + dy*dcbydy;
+            // cbz  = cbz + dz*dcbzdz;
 
             real_t ux = velocity_x.access(s,i);   // Load velocity
             real_t uy = velocity_y.access(s,i);   // Load velocity
             real_t uz = velocity_z.access(s,i);   // Load velocity
 
-            ux  += hax;                               // Half advance E
-            uy  += hay;
-            uz  += haz;
+            // ux  += hax;                               // Half advance E
+            // uy  += hay;
+            // uz  += haz;
 
-            real_t v0   = qdt_2mc/sqrtf(one + (ux*ux + (uy*uy + uz*uz)));
-            /**/                                      // Boris - scalars
-            real_t v1   = cbx*cbx + (cby*cby + cbz*cbz);
-            real_t v2   = (v0*v0)*v1;
-            real_t v3   = v0*(one+v2*(one_third+v2*two_fifteenths));
-            real_t v4   = v3/(one+v1*(v3*v3));
-            v4  += v4;
-            v0   = ux + v3*( uy*cbz - uz*cby );       // Boris - uprime
-            v1   = uy + v3*( uz*cbx - ux*cbz );
-            v2   = uz + v3*( ux*cby - uy*cbx );
-            ux  += v4*( v1*cbz - v2*cby );            // Boris - rotation
-            uy  += v4*( v2*cbx - v0*cbz );
-            uz  += v4*( v0*cby - v1*cbx );
-            ux  += hax;                               // Half advance E
-            uy  += hay;
-            uz  += haz;
+            // real_t v0   = qdt_2mc/sqrtf(one + (ux*ux + (uy*uy + uz*uz)));
+            // /**/                                      // Boris - scalars
+            // real_t v1   = cbx*cbx + (cby*cby + cbz*cbz);
+            // real_t v2   = (v0*v0)*v1;
+            // real_t v3   = v0*(one+v2*(one_third+v2*two_fifteenths));
+            // real_t v4   = v3/(one+v1*(v3*v3));
+            // v4  += v4;
+            // v0   = ux + v3*( uy*cbz - uz*cby );       // Boris - uprime
+            // v1   = uy + v3*( uz*cbx - ux*cbz );
+            // v2   = uz + v3*( ux*cby - uy*cbx );
+            // ux  += v4*( v1*cbz - v2*cby );            // Boris - rotation
+            // uy  += v4*( v2*cbx - v0*cbz );
+            // uz  += v4*( v0*cby - v1*cbx );
+            // ux  += hax;                               // Half advance E
+            // uy  += hay;
+            // uz  += haz;
 
-            velocity_x.access(s,i) = ux;
-            velocity_y.access(s,i) = uy;
-            velocity_z.access(s,i) = uz;
+            velocity_x.access(s,i) = ux+ static_cast<float>(1e-7);;
+            velocity_y.access(s,i) = uy+ static_cast<float>(1e-7);;
+            velocity_z.access(s,i) = uz+ static_cast<float>(1e-7);;
 
-            v0   = one/sqrtf(one + (ux*ux+ (uy*uy + uz*uz)));
-            /**/                                      // Get norm displacement
-            ux  *= cdt_dx;
-            uy  *= cdt_dy;
-            uz  *= cdt_dz;
-            ux  *= v0;
-            uy  *= v0;
-            uz  *= v0;
-            v0   = dx + ux;                           // Streak midpoint (inbnds)
-            v1   = dy + uy;
-            v2   = dz + uz;
-            v3   = v0 + ux;                           // New position
-            v4   = v1 + uy;
-            real_t v5   = v2 + uz;
+            // v0   = one/sqrtf(one + (ux*ux+ (uy*uy + uz*uz)));
+            // /**/                                      // Get norm displacement
+            // ux  *= cdt_dx;
+            // uy  *= cdt_dy;
+            // uz  *= cdt_dz;
+            // ux  *= v0;
+            // uy  *= v0;
+            // uz  *= v0;
+            // v0   = dx + ux;                           // Streak midpoint (inbnds)
+            // v1   = dy + uy;
+            // v2   = dz + uz;
+            // v3   = v0 + ux;                           // New position
+            // v4   = v1 + uy;
+            // real_t v5   = v2 + uz;
 
-            real_t q = weight.access(s,i)*qsp;   // Load charge
+            // real_t q = weight.access(s,i)*qsp;   // Load charge
 
             // Check if inbnds
-            if(  v3<=one &&  v4<=one &&  v5<=one && -v3<=one && -v4<=one && -v5<=one )
-            {
+            // if(  v3<=one &&  v4<=one &&  v5<=one && -v3<=one && -v4<=one && -v5<=one )
+            // {
 
                 // Common case (inbnds).  Note: accumulator values are 4 times
                 // the total physical charge that passed through the appropriate
@@ -192,22 +331,26 @@ void push(
 
 
                 // Store new position
-                position_x.access(s,i) = v3;
-                position_y.access(s,i) = v4;
-                position_z.access(s,i) = v5;
+	    position_x.access(s,i) = dx+ static_cast<float>(1e-7);; //v3;
+	    position_y.access(s,i) = dy+ static_cast<float>(1e-7);; //v4;
+	    position_z.access(s,i) = dz+ static_cast<float>(1e-7);; //v5;
 
-                dx = v0;                                // Streak midpoint
-                dy = v1;
-                dz = v2;
-                v5 = q*ux*uy*uz*one_third;              // Compute correction
+	    real_t wt = weight.access(s,i);
+	    int    ci = cell.access(s,i);
+	    weight.access(s,i) = wt + static_cast<float>(1e-7);
+	    cell.access(s,i)   = ci++;
+   	    // dx = v0;                                // Streak midpoint
+                // dy = v1;
+                // dz = v2;
+                // v5 = q*ux*uy*uz*one_third;              // Compute correction
 
-                //real_t* a  = (real_t *)( a0[ii].a );              // Get accumulator
+                // //real_t* a  = (real_t *)( a0[ii].a );              // Get accumulator
 
-                //1D only
-                _a(ii,0) += q*ux;
-                _a(ii,1) = 0;
-                _a(ii,2) = 0;
-                _a(ii,3) = 0;
+                // //1D only
+                // _a(ii,0) += q*ux;
+                // _a(ii,1) = 0;
+                // _a(ii,2) = 0;
+                // _a(ii,3) = 0;
 
                 // #     define ACCUMULATE_J(X,Y,Z,offset)                                 \
                 //                     v4  = q*u##X;   /* v2 = q ux                            */        \
@@ -235,40 +378,40 @@ void push(
 
                 // #     undef ACCUMULATE_J
 
-            }
-            else
-            {                                    // Unlikely
-                local_pm.dispx = ux;
-                local_pm.dispy = uy;
-                local_pm.dispz = uz;
+            // }
+            // else
+            // {                                    // Unlikely
+            //     local_pm.dispx = ux;
+            //     local_pm.dispy = uy;
+            //     local_pm.dispz = uz;
 
-                local_pm.i = s*particle_list_t::vector_length + i; //i + itmp; //p_ - p0;
+            //     local_pm.i = s*particle_list_t::vector_length + i; //i + itmp; //p_ - p0;
 
-                // Handle particles that cross cells
-                move_p( position_x, position_y, position_z, cell, _a, q, local_pm,  g,  s, i, nx, ny, nz, num_ghosts, boundary );
+            //     // Handle particles that cross cells
+            //     move_p( position_x, position_y, position_z, cell, _a, q, local_pm,  g,  s, i, nx, ny, nz, num_ghosts, boundary );
 
-                // TODO: renable this
-                //if ( move_p( p0, local_pm, a0, g, qsp ) ) { // Unlikely
-                //if ( move_p( particles, local_pm, a0, g, qsp, s, i ) ) { // Unlikely
-                //if( nm<max_nm ) {
-                //pm[nm++] = local_pm[0];
-                //}
-                //else {
-                //ignore++;                 // Unlikely
-                //} // if
-                //} // if
+            //     // TODO: renable this
+            //     //if ( move_p( p0, local_pm, a0, g, qsp ) ) { // Unlikely
+            //     //if ( move_p( particles, local_pm, a0, g, qsp, s, i ) ) { // Unlikely
+            //     //if( nm<max_nm ) {
+            //     //pm[nm++] = local_pm[0];
+            //     //}
+            //     //else {
+            //     //ignore++;                 // Unlikely
+            //     //} // if
+            //     //} // if
 
-                /* // Copied from VPIC Kokkos for reference
-                   if( move_p_kokkos( k_particles, k_local_particle_movers,
-                   k_accumulators_sa, g, qsp ) ) { // Unlikely
-                   if( k_nm(0)<max_nm ) {
-                   nm = int(Kokkos::atomic_fetch_add( &k_nm(0), 1 ));
-                   if (nm >= max_nm) Kokkos::abort("overran max_nm");
-                   copy_local_to_pm(nm);
-                   }
-                   }
-                   */
-            }
+            //     /* // Copied from VPIC Kokkos for reference
+            //        if( move_p_kokkos( k_particles, k_local_particle_movers,
+            //        k_accumulators_sa, g, qsp ) ) { // Unlikely
+            //        if( k_nm(0)<max_nm ) {
+            //        nm = int(Kokkos::atomic_fetch_add( &k_nm(0), 1 ));
+            //        if (nm >= max_nm) Kokkos::abort("overran max_nm");
+            //        copy_local_to_pm(nm);
+            //        }
+            //        }
+            //        */
+            // }
 
             //} // end VLEN loop
         };

@@ -1,9 +1,12 @@
+#define BYTES_PER_GB (1024*1024*1024LL)
+#define BYTES_PER_MB (1024*1024LL)
 #include <Cabana_AoSoA.hpp>
 #include <Cabana_Core.hpp>
 #include <Cabana_Sort.hpp> // is this needed if we already have core?
 
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
 
 #include "types.h"
 #include "helpers.h"
@@ -37,14 +40,14 @@ int main( int argc, char* argv[] )
 
     // Cabana scoping block
     {
-
+ 
         Visualizer vis;
 
         // Initialize input deck params.
 
         // num_cells (without ghosts), num_particles_per_cell
-        size_t npc = 4000;
-        Initializer::initialize_params(64, 1, 1, npc);
+        size_t npc = 32000;
+        Initializer::initialize_params(512, 1, 1, npc);
 
         // Cache some values locally for printing
         const size_t nx = Parameters::instance().nx;
@@ -118,7 +121,7 @@ int main( int argc, char* argv[] )
         const real_t pz =  (nz>1) ? frac*c*dt/dz : 0;
 
         // simulation loop
-        const size_t num_steps = Parameters::instance().num_steps;
+        const size_t num_steps = 10; //Parameters::instance().num_steps;
 
         printf( "#***********************************************\n" );
         printf ( "#num_step = %d\n" , num_steps );
@@ -137,14 +140,16 @@ int main( int argc, char* argv[] )
         printf ( "#n0 = %f\n" , n0 );
         printf( "" );
 
+	auto start = std::chrono::steady_clock::now();
+
         for (size_t step = 0; step < num_steps; step++)
         {
             //     //std::cout << "Step " << step << std::endl;
             // Convert fields to interpolators
 
-            load_interpolator_array(fields, interpolators, nx, ny, nz, num_ghosts);
+            //load_interpolator_array(fields, interpolators, nx, ny, nz, num_ghosts);
 
-            clear_accumulator_array(fields, accumulators, nx, ny, nz);
+            //clear_accumulator_array(fields, accumulators, nx, ny, nz);
             //     // TODO: Make the frequency of this configurable (every step is not
             //     // required for this incarnation)
             //     // Sort by cell index
@@ -152,34 +157,37 @@ int main( int argc, char* argv[] )
             //     auto bin_data = Cabana::sortByKey( keys );
 
             // Move
-            push(
-                    particles,
-                    interpolators,
-                    qdt_2mc,
-                    cdt_dx,
-                    cdt_dy,
-                    cdt_dz,
-                    qsp,
-                    accumulators,
-                    grid,
-                    nx,
-                    ny,
-                    nz,
-                    num_ghosts,
-                    boundary
-                );
+	    //push_simd_parallel_for(particles);
+	    push_parallel_for(particles);	  
+	    //push(particles);
+            // push(
+            //         particles,
+            //         interpolators,
+            //         qdt_2mc,
+            //         cdt_dx,
+            //         cdt_dy,
+            //         cdt_dz,
+            //         qsp,
+            //         accumulators,
+            //         grid,
+            //         nx,
+            //         ny,
+            //         nz,
+            //         num_ghosts,
+            //         boundary
+            //     );
 
             // TODO: boundaries? MPI
             // boundary_p(); // Implies Parallel?
 
             // Map accumulator current back onto the fields
-            unload_accumulator_array(fields, accumulators, nx, ny, nz, num_ghosts, dx, dy, dz, dt);
+            //unload_accumulator_array(fields, accumulators, nx, ny, nz, num_ghosts, dx, dy, dz, dt);
 
             //     // Half advance the magnetic field from B_0 to B_{1/2}
             //     field_solver.advance_b(fields, px, py, pz, nx, ny, nz);
 
             // Advance the electric field from E_0 to E_1
-            field_solver.advance_e(fields, px, py, pz, nx, ny, nz);
+            //field_solver.advance_e(fields, px, py, pz, nx, ny, nz);
 
             //     // Half advance the magnetic field from B_{1/2} to B_1
             //     field_solver.advance_b(fields, px, py, pz, nx, ny, nz);
@@ -189,10 +197,14 @@ int main( int argc, char* argv[] )
 
             //     // Output vis
             //     vis.write_vis(particles, step);
-            printf("%d %f, %f\n",step, step*dt,field_solver.e_energy(fields, px, py, pz, nx, ny, nz));
+            //printf("%d %f, %f\n",step, step*dt,field_solver.e_energy(fields, px, py, pz, nx, ny, nz));
         }
-
-
+	auto finish = std::chrono::steady_clock::now();
+	double elapsed_seconds = std::chrono::duration_cast<
+	  std::chrono::duration<double> >(finish - start).count();
+	double particle_bytes = 8*sizeof(float)*(double) particles.size();
+	double bytes = particle_bytes*(double)num_steps*2; //read+write
+	printf("num_particles=%d (%f MiB), push_time=%f s,bw=%f GiB/s\n",particles.size(),particle_bytes/(double) BYTES_PER_MB,elapsed_seconds, bytes/(elapsed_seconds)/(double) BYTES_PER_GB); 
     } // End Scoping block
 
     printf("#Good!\n");

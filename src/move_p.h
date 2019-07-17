@@ -56,7 +56,7 @@ KOKKOS_INLINE_FUNCTION int detect_leaving_domain( size_t face, size_t nx, size_t
 
 // TODO: add namespace etc?
 // TODO: port this to cabana syntax
-template<typename T1, typename T2, typename T3, typename T4, typename T5> KOKKOS_INLINE_FUNCTION int move_p(
+template<typename T1, typename T2, typename T3, typename T4, typename T5> int move_p(
         //particle_list_t particles,
         T1 position_x,
         T2 position_y,
